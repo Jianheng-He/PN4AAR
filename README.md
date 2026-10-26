@@ -2,7 +2,7 @@
 
 用可旋转的三维场景，直观比较不同 PN 导引律在**同一相对运动状态**下给出的加速度指令。场景包含无人机、锥套目标、北东地坐标轴、视线和速度向量。
 
-**[打开在线网页 →](https://pn-3d-docking-lab.luckygnome9.chatgpt.site)**
+**[打开在线网页 →](https://pn4aar.luckygnome9.chatgpt.site)**
 
 网页已独立托管。本仓库用于项目介绍和源码展示，不需要配置 GitHub Pages。
 
