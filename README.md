@@ -4,6 +4,8 @@
 
 **[打开在线网页 →](https://pn4aar.luckygnome9.chatgpt.site)**
 
+![项目预览图](preview.jpg)
+
 ## 可以做什么
 
 - 切换 RTPN、TPN、PPN、IPN、APN、AIPN、BPN、BPPN、GTPN 和 ZEM-PN，共 10 个选项。
