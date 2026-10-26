@@ -28,14 +28,14 @@ export function createScene(host) {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   host.append(renderer.domElement);
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x111c2c, 125, 300);
-  const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 2000);
+  // 轨迹使用惯性 NED 世界坐标，远处轨迹不受雾效遮挡。
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 100000);
   camera.up.set(0, 1, 0);
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.09;
   controls.minDistance = 5;
-  controls.maxDistance = 500;
+  controls.maxDistance = 50000;
   controls.maxPolarAngle = Math.PI * 0.97;
   scene.add(new THREE.HemisphereLight(0xdceaff, 0x36415a, 2.7));
   const sun = new THREE.DirectionalLight(0xffffff, 3);
@@ -51,6 +51,32 @@ export function createScene(host) {
   scene.add(grid);
   const dynamic = new THREE.Group();
   scene.add(dynamic);
+  const actors = new THREE.Group(),
+    tracks = new THREE.Group();
+  scene.add(actors, tracks);
+  let aircraftModel,
+    drogueModel,
+    trajectory = null,
+    trackLines = [];
+  let worldOffset = new THREE.Vector3();
+  function setTrajectory(value) {
+    tracks.children.forEach((o) => {
+      o.geometry.dispose();
+      o.material.dispose();
+    });
+    tracks.clear();
+    trajectory = value;
+    trackLines = [];
+    if (value)
+      for (const [key, color] of [
+        ["pU", 0x4580ff],
+        ["pT", 0xedaa50],
+      ]) {
+        const points = value.frames.map((f) => vector(f[key]));
+        line(points, color, 0.22, tracks);
+        trackLines.push(line(points, color, 1, tracks));
+      }
+  }
   let labels = [],
     lastState = null,
     lastOptions = null,
@@ -245,6 +271,7 @@ export function createScene(host) {
       new THREE.Vector3(1, 0, 0),
       vector(unit(forward)),
     );
+    return group;
   }
   function label(text, position, color = "#dce8f9", offset = [0, 0]) {
     const el = document.createElement("div");
@@ -296,8 +323,16 @@ export function createScene(host) {
     view = mode;
     const g = geometry(lastState);
     const r = g.valid ? vector(lastState.r) : new THREE.Vector3(0, 0, -20);
-    const target = r.clone().multiplyScalar(0.45),
-      R = Math.max(r.length(), 15) * Math.max(1, 0.95 / camera.aspect);
+    let target = r.clone().multiplyScalar(0.45).add(worldOffset);
+    let extent = Math.max(r.length(), 15);
+    if (trajectory) {
+      const box = new THREE.Box3();
+      for (const f of trajectory.frames)
+        box.expandByPoint(vector(f.pU)).expandByPoint(vector(f.pT));
+      target = box.getCenter(new THREE.Vector3());
+      extent = Math.max(box.getSize(new THREE.Vector3()).length(), 15);
+    }
+    const R = extent * Math.max(1, 0.95 / camera.aspect);
     controls.target.copy(target);
     camera.up.set(0, 1, 0);
     if (mode === "top") {
@@ -316,7 +351,14 @@ export function createScene(host) {
     camera.lookAt(target);
     controls.update();
   }
-  function update(s, law, options, refit = false) {
+  function update(
+    s,
+    law,
+    options,
+    refit = false,
+    frame = null,
+    frameIndex = 0,
+  ) {
     lastState = s;
     lastOptions = options;
     lastLaw = law;
@@ -324,9 +366,39 @@ export function createScene(host) {
     let g = geometry(s),
       validGeometry = g.valid;
     if (!validGeometry) g = { R: 20, er: [1, 0, 0], vT: add(s.u, s.v) };
-    aircraft(s);
-    drogue(s, g);
-    label("无人机 U", new THREE.Vector3(0, -1.4, 0), "#c6d5eb", [-16, 16]);
+    // 模型复用；箭头与标签以当前无人机位置为共同平移原点。
+    if (!aircraftModel) {
+      aircraftModel = aircraft(s);
+      drogueModel = drogue(s, g);
+      actors.add(aircraftModel, drogueModel);
+      mesh(
+        new THREE.SphereGeometry(0.14, 10, 8),
+        new THREE.MeshBasicMaterial({ color: 0x47c2b1, depthTest: false }),
+        [0, 0, 0],
+        aircraftModel,
+      ).renderOrder = 10;
+    }
+    worldOffset.copy(frame ? vector(frame.pU) : new THREE.Vector3());
+    dynamic.position.copy(worldOffset);
+    actors.position.copy(worldOffset);
+    drogueModel.position.copy(vector(s.r));
+    if (norm(s.u) > 1e-10)
+      aircraftModel.quaternion.setFromUnitVectors(
+        new THREE.Vector3(1, 0, 0),
+        vector(unit(s.u)),
+      );
+    const forward = norm(g.vT) > 1e-10 ? g.vT : g.er;
+    drogueModel.quaternion.setFromUnitVectors(
+      new THREE.Vector3(1, 0, 0),
+      vector(unit(forward)),
+    );
+    trackLines.forEach((l) => l.geometry.setDrawRange(0, frameIndex + 1));
+    label(
+      "无人机参考点 U",
+      new THREE.Vector3(0, -1.4, 0),
+      "#c6d5eb",
+      [-16, 16],
+    );
     label(
       "锥套目标点 T",
       vector(s.r).add(new THREE.Vector3(0, 1.8, 0)),
@@ -457,10 +529,10 @@ export function createScene(host) {
       if (result.magnitude > 1e-10)
         arrow(
           origin,
-          result.a,
-          len(result.a),
+          frame ? frame.applied : result.a,
+          len(frame ? frame.applied : result.a),
           colors.command,
-          "a · " + law,
+          (frame?.limited ? "执行 a · " : "a · ") + law,
           [6, -14],
         );
       else label("零加速度指令", new THREE.Vector3(0, 2.8, 0), "#8ab0ff");
@@ -472,7 +544,7 @@ export function createScene(host) {
     const w = host.clientWidth,
       h = host.clientHeight;
     for (const l of labels) {
-      const p = l.position.clone().project(camera);
+      const p = l.position.clone().add(worldOffset).project(camera);
       const x = ((p.x + 1) * w) / 2 + l.offset[0],
         y = ((1 - p.y) * h) / 2 + l.offset[1];
       l.el.style.left = x + "px";
@@ -502,6 +574,13 @@ export function createScene(host) {
   animate();
   return {
     update,
+    setTrajectory,
+    focus() {
+      const saved = trajectory;
+      trajectory = null;
+      fit();
+      trajectory = saved;
+    },
     fit,
     renderer,
     camera,

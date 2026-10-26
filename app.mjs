@@ -7,12 +7,19 @@ import {
   norm,
   dot,
 } from "./guidance.mjs";
+import { simulate } from "./simulation.mjs";
 import { createScene } from "./scene.mjs";
 const $ = (id) => document.getElementById(id),
   clone = (x) => structuredClone(x);
 let state = clone(presets.closing),
   selected = "RTPN",
   scene;
+let trajectory = null,
+  frameIndex = 0,
+  playing = false,
+  playClock = 0,
+  lastPaint = 0,
+  playbackGeneration = 0;
 const options = {
   velocities: true,
   plane: false,
@@ -140,16 +147,23 @@ function selectLaw(id) {
   specialControls();
   update();
 }
-function update(refit = false) {
+// 输入只定义初始条件；播放时使用积分帧，避免把中途状态写回输入框。
+function update(refit = false, keepTrajectory = false) {
+  if (!keepTrajectory) {
+    refit ||= !!trajectory;
+    clearTrajectory();
+  }
+  const frame = trajectory?.frames[frameIndex];
+  const displayState = frame?.state || state;
   const law = laws.find((x) => x.id === selected),
-    g = geometry(state),
-    out = evaluate(selected, state);
+    g = geometry(displayState),
+    out = evaluate(selected, displayState);
   document.querySelectorAll("[data-special-vector]").forEach((input) => {
     if (document.activeElement !== input)
       input.value = Number.isFinite(
-        state[input.dataset.specialVector][Number(input.dataset.axis)],
+        displayState[input.dataset.specialVector][Number(input.dataset.axis)],
       )
-        ? state[input.dataset.specialVector][Number(input.dataset.axis)]
+        ? displayState[input.dataset.specialVector][Number(input.dataset.axis)]
         : "";
   });
   document.querySelectorAll("[data-law]").forEach((el) => {
@@ -195,13 +209,13 @@ function update(refit = false) {
   else if (g.vc <= 0)
     warning =
       "当前闭合速度 ≤ 0。公式保留符号；这不是正在接近的状态，不据此保证捕获。";
-  else if (norm(state.v) < 1e-10)
+  else if (norm(displayState.v) < 1e-10)
     warning = "相对静止：基础 PN 为零，不能仅凭视线不转就认为正在对接。";
   $("scene-warning").hidden = !warning;
   $("scene-warning").textContent = warning;
   $("comparison-body").innerHTML = laws
     .map((l) => {
-      const r = evaluate(l.id, state);
+      const r = evaluate(l.id, displayState);
       return `<tr class="${l.id === selected ? "selected-row" : ""}"><td><button data-row="${l.id}">${l.id === "ZEM" ? "ZEM-PN" : l.id}</button></td><td>${l.tag}</td><td>${r.valid ? vec(r.a) : "不适用"}</td><td>${r.valid ? fmt(r.radial) : "—"}</td><td>${r.valid ? fmt(r.magnitude) : "—"}</td></tr>`;
     })
     .join("");
@@ -214,12 +228,27 @@ function update(refit = false) {
     ? "位置按米绘制；同一状态下，加速度箭头共用比例、速度箭头另用比例。参考方向仍为单位示意，二者量纲不混比。"
     : "位置按米绘制；向量箭头仅表示方向，真实大小见数值。不同量纲不共用长度比例。";
   const finiteVectors = ["r", "u", "v", "aT", "b"].every((key) =>
-    state[key].every(Number.isFinite),
+    displayState[key].every(Number.isFinite),
   );
   $("viewport").style.opacity = finiteVectors ? "1" : ".3";
-  if (scene && finiteVectors) scene.update(state, selected, options, refit);
-  window.__PNLAB__ = {
-    state: clone(state),
+  if (scene && finiteVectors)
+    scene.update(displayState, selected, options, refit, frame, frameIndex);
+  $("scene-mode").textContent = frame
+    ? `闭环轨迹 · t = ${fmt(frame.t, 2)} s · NED 惯性系`
+    : "瞬时几何 · NED 惯性系";
+  $("time-label").textContent = `${fmt(frame?.t || 0, 2)} s`;
+  $("timeline").value = frameIndex;
+  $("applied-command").hidden = !frame;
+  if (frame)
+    $("applied-command").textContent =
+      `当前执行 a = ${vec(frame.applied)} m/s²${frame.limited ? "（已限幅；右侧和下表仍为原始公式值）" : "（未限幅）"}`;
+  explainDirection(displayState, out);
+  window.__PN4AAR__ = {
+    state: clone(displayState),
+    initialState: clone(state),
+    trajectory,
+    frameIndex,
+    playing,
     selected,
     result: out,
     geometry: g,
@@ -251,11 +280,11 @@ for (const [id, key] of [
 ])
   $(id).addEventListener("change", () => {
     options[key] = $(id).checked;
-    update();
+    update(false, true);
   });
 $("length-mode").addEventListener("change", () => {
   options.magnitude = $("length-mode").value === "magnitude";
-  update();
+  update(false, true);
 });
 document.querySelectorAll("[data-view]").forEach((b) =>
   b.addEventListener("click", () => {
@@ -266,6 +295,7 @@ document.querySelectorAll("[data-view]").forEach((b) =>
     });
   }),
 );
+$("focus-current").addEventListener("click", () => scene?.focus());
 $("fit-view").addEventListener("click", () => scene?.fit());
 $("expand-view").addEventListener("click", async () => {
   try {
@@ -277,6 +307,103 @@ $("expand-view").addEventListener("click", async () => {
       "当前浏览器不支持全屏；可继续拖动与缩放场景。";
   }
 });
+
+function explainDirection(s, out) {
+  const horizontal = Math.hypot(s.u[0], s.u[1]);
+  if (!out.valid || horizontal < 1e-8) {
+    $("direction-explanation").textContent =
+      "当前状态无法定义水平航向左右；请查看 NED 分量。";
+    return;
+  }
+  const right = [-s.u[1] / horizontal, s.u[0] / horizontal, 0];
+  const rSide = dot(s.r, right),
+    vSide = dot(s.v, right),
+    aSide = dot(out.a, right);
+  const side = (x) =>
+    Math.abs(x) < 1e-5 ? "横向为零" : x > 0 ? "向右" : "向左";
+  $("direction-explanation").textContent =
+    `锥套${side(rSide)} ${fmt(Math.abs(rSide), 2)} m；相对横向运动${side(vSide)} ${fmt(Math.abs(vSide), 2)} m/s；指令${side(aSide)} ${fmt(Math.abs(aSide), 3)} m/s²。PN 根据视线转动修正交会趋势，不能只看目标当前在哪边。`;
+}
+function pause() {
+  playbackGeneration++;
+  playing = false;
+  $("play").textContent = "播放";
+}
+function clearTrajectory() {
+  pause();
+  trajectory = null;
+  frameIndex = 0;
+  scene?.setTrajectory(null);
+  $("play").disabled =
+    $("timeline").disabled =
+    $("clear-trajectory").disabled =
+      true;
+  $("trajectory-status").textContent = "选好导引律和初始状态，再计算轨迹。";
+}
+$("integrate").addEventListener("click", () => {
+  pause();
+  try {
+    trajectory = simulate(selected, clone(state), {
+      duration: Number($("sim-duration").value),
+      dt: Number($("sim-dt").value),
+      radius: Number($("sim-radius").value),
+      maxAcceleration: Number($("sim-limit").value),
+    });
+    frameIndex = 0;
+    scene?.setTrajectory(trajectory);
+    $("timeline").max = trajectory.frames.length - 1;
+    $("play").disabled = $("timeline").disabled = trajectory.frames.length < 2;
+    $("clear-trajectory").disabled = false;
+    $("trajectory-status").textContent =
+      `${trajectory.reason} · ${fmt(trajectory.duration, 2)} s · 最小间距 ${fmt(trajectory.minRange, 3)} m · 末相对速率 ${fmt(trajectory.finalRelativeSpeed, 2)} m/s${trajectory.limited ? " · 过程中存在限幅" : ""}`;
+    update(true, true);
+  } catch (error) {
+    clearTrajectory();
+    update(true, true);
+    $("trajectory-status").textContent = error.message;
+  }
+});
+$("clear-trajectory").addEventListener("click", () => update(true));
+$("timeline").addEventListener("input", () => {
+  pause();
+  frameIndex = Number($("timeline").value);
+  update(false, true);
+});
+$("play").addEventListener("click", () => {
+  if (playing) {
+    pause();
+    update(false, true);
+    return;
+  }
+  if (!trajectory || trajectory.frames.length < 2) return;
+  if (frameIndex === trajectory.frames.length - 1) frameIndex = 0;
+  playClock = trajectory.frames[frameIndex].t;
+  playing = true;
+  $("play").textContent = "暂停";
+  const generation = ++playbackGeneration;
+  let previous = performance.now();
+  function tick(now) {
+    if (!playing || !trajectory || generation !== playbackGeneration) return;
+    playClock +=
+      Math.min((now - previous) / 1000, 0.1) * Number($("play-speed").value);
+    previous = now;
+    while (
+      frameIndex < trajectory.frames.length - 1 &&
+      trajectory.frames[frameIndex + 1].t <= playClock
+    )
+      frameIndex++;
+    if (frameIndex === trajectory.frames.length - 1) pause();
+    if (now - lastPaint > 70 || !playing) {
+      update(false, true);
+      lastPaint = now;
+    }
+    if (playing) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+});
+for (const id of ["sim-duration", "sim-dt", "sim-radius", "sim-limit"])
+  $(id).addEventListener("input", () => update(true));
+
 $("reference-list").innerHTML = sourceKeys
   .map(
     (key, i) =>
@@ -290,5 +417,6 @@ try {
     '<div class="error-fallback">当前浏览器无法创建 WebGL 3D 场景。请开启硬件加速后刷新；公式、参数与数值比较仍可使用。</div>';
   console.error(error);
 }
+$("scenario").value = "closing";
 populate();
 update(true);

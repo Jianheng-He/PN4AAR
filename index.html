@@ -8,7 +8,7 @@
       content="用可旋转三维无人机与锥套场景，理解 PPN、TPN、RTPN、IPN、APN、AIPN、BPN 等比例导引的方向、输入和定义。"
     />
     <meta name="theme-color" content="#111c2c" />
-    <title>PN Lab · 三维比例导引实验室</title>
+    <title>PN4AAR · 比例导引与轨迹实验室</title>
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='9' fill='%23255cf3'/%3E%3Cpath d='M9 29 20 8 31 29 20 24Z' fill='white'/%3E%3C/svg%3E"
@@ -22,7 +22,7 @@
     <header class="topbar">
       <a class="brand" href="#"
         ><span class="brand-mark">↗</span
-        ><span>PN <b>LAB</b><small>GUIDANCE GEOMETRY</small></span></a
+        ><span><b>PN4AAR</b><small>GUIDANCE GEOMETRY</small></span></a
       >
       <div class="top-links">
         <a href="#references">文献依据 ↗</a
@@ -34,7 +34,7 @@
         <div>
           <div class="eyebrow">无人机 × 空中锥套 / 比例导引探索</div>
           <h1>同一相对状态，<span>不同加速方向。</span></h1>
-          <p>旋转视角，看清各类 PN 如何改变无人机的运动指令。</p>
+          <p>从瞬时加速度到三维轨迹，看清各类 PN 如何改变相对运动。</p>
         </div>
         <div class="intro-note">
           <span>10</span>
@@ -45,7 +45,7 @@
         <aside class="controls-panel">
           <div class="section-label">01 / 选择导引律</div>
           <div id="law-list" class="law-list"></div>
-          <div class="section-label state-label">02 / 设定同一运动状态</div>
+          <div class="section-label state-label">02 / 设定初始运动状态</div>
           <label class="field-label" for="scenario">场景预设</label
           ><select id="scenario"></select>
           <div class="gain-control">
@@ -65,7 +65,7 @@
             <div class="scene-heading">
               <div>
                 <span class="live-dot"></span> <span id="scene-law">RTPN</span
-                ><small>瞬时几何 · 非飞行仿真</small>
+                ><small id="scene-mode">瞬时几何 · NED 惯性系</small>
               </div>
               <span class="coordinate-tag">NED</span>
             </div>
@@ -83,6 +83,7 @@
                 透视</button
               ><button data-view="top" aria-pressed="false">俯视</button
               ><button data-view="side" aria-pressed="false">侧视</button
+              ><button id="focus-current">看当前</button
               ><button id="fit-view" aria-label="重新居中并适配场景">
                 ↗ 居中</button
               ><button id="expand-view" aria-label="全屏查看三维场景">⛶</button>
@@ -119,6 +120,91 @@
               </select></label
             >
           </div>
+          <section class="trajectory-panel" aria-label="轨迹积分">
+            <div class="trajectory-heading">
+              <b>04 / 看它怎样飞</b><span>理想跟随 · 闭环积分</span>
+            </div>
+            <div class="trajectory-actions">
+              <button id="integrate" class="primary-button">计算轨迹</button>
+              <button id="play" disabled>播放</button>
+              <button id="clear-trajectory" disabled>清除轨迹</button>
+              <select id="play-speed" aria-label="播放速度">
+                <option value="1">1× 速度</option>
+                <option value="2" selected>2× 速度</option>
+                <option value="5">5× 速度</option>
+              </select>
+            </div>
+            <div class="timeline">
+              <input
+                id="timeline"
+                aria-label="轨迹时间"
+                type="range"
+                min="0"
+                max="1"
+                step="1"
+                value="0"
+                disabled
+              /><output id="time-label">0.00 s</output>
+            </div>
+            <div class="trajectory-key">
+              <span><i style="--key: #4580ff"></i>无人机轨迹</span
+              ><span><i style="--key: #edaa50"></i>锥套轨迹</span
+              ><span>浅色：完整轨迹；实色：已播放</span>
+            </div>
+            <div id="trajectory-status" class="trajectory-status" role="status">
+              选好导引律和初始状态，再计算轨迹。
+            </div>
+            <p id="applied-command" class="applied-command" hidden></p>
+            <details class="simulation-settings">
+              <summary>积分参数与模型</summary>
+              <div class="simulation-grid">
+                <label
+                  >时长 / s<input
+                    id="sim-duration"
+                    type="number"
+                    min="0.1"
+                    max="60"
+                    step="1"
+                    value="20"
+                /></label>
+                <label
+                  >最大步长 / s<input
+                    id="sim-dt"
+                    type="number"
+                    min="0.005"
+                    max="0.2"
+                    step="0.005"
+                    value="0.02"
+                /></label>
+                <label
+                  >接近阈值 / m<input
+                    id="sim-radius"
+                    type="number"
+                    min="0.01"
+                    step="0.1"
+                    value="0.5"
+                /></label>
+                <label
+                  >加速度限幅 / m·s⁻²<input
+                    id="sim-limit"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value="0"
+                /></label>
+              </div>
+              <p>
+                默认控制器完美跟随净加速度；限幅 0 表示关闭。四阶 RK
+                每个子阶段重算 PN，接近时缩短步长。目标 aT 在 NED
+                中恒定，所有导引律共用该机动。
+              </p>
+              <p>
+                积分 ṗU = vU，v̇U = a，ṗT = vT，v̇T =
+                aT。首次进入阈值、首次最近接近或达到时限时停止。阈值衡量质点参考点间距，不是探针接触；无末速度、末方向控制，也未模拟姿态、气动或已有
+                PID 链路。
+              </p>
+            </details>
+          </section>
           <div class="metrics">
             <div>
               <span>相对距离 R</span><strong id="metric-range">—</strong
@@ -170,6 +256,13 @@
             <dd id="law-reference"></dd>
           </dl>
           <div class="check-line" id="check-line"></div>
+          <div class="direction-note">
+            <b>为什么朝这个方向？</b>
+            <p id="direction-explanation"></p>
+            <small
+              >左右以无人机水平地速方向为准；旋转相机后，屏幕左右不等于航向左右。</small
+            >
+          </div>
           <div class="definition-note">
             <b>定义边界</b>
             <p id="law-notes"></p>
@@ -209,7 +302,7 @@
       </section>
     </main>
     <footer>
-      <span>PN LAB / 三维比例导引实验室</span
+      <span>PN4AAR / 比例导引与轨迹实验室</span
       ><span>面向几何理解，保持定义透明。</span>
     </footer>
     <script type="module" src="./app.mjs"></script>

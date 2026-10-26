@@ -1,4 +1,4 @@
-// All physical vectors use right-handed NED; positions m, velocities m/s, accelerations m/s².
+// 所有物理向量均采用右手北东地坐标系；位置单位 m，速度 m/s，加速度 m/s²。
 export const add = (a, b) => a.map((x, i) => x + b[i]);
 export const sub = (a, b) => a.map((x, i) => x - b[i]);
 export const mul = (a, s) => a.map((x) => x * s);
@@ -195,6 +195,17 @@ export const laws = [
   },
 ];
 export const presets = {
+  left_crossing: {
+    name: "锥套在左，为什么向右加速？",
+    r: [20, -2, 0],
+    u: [10, 0, 0],
+    v: [-2, 1, 0],
+    aT: [0, 0, 0],
+    b: [0, 0, 0],
+    N: 3,
+    vc0: 2,
+    beta: 20,
+  },
   closing: {
     name: "三维接近 · 同时横向漂移",
     r: [20, 6, -3],

@@ -1,3 +1,4 @@
+import { simulate } from "./simulation.mjs";
 import assert from "node:assert/strict";
 
 import {
@@ -158,12 +159,84 @@ vnear(
   [0, -0.6, -0.15],
   "negative closing retained",
 );
+// 方向回归：目标在左前方但向右穿越，三种基础律均应给出向右分量。
+for (const law of ["PPN", "RTPN", "IPN"]) {
+  assert.ok(evaluate(law, presets.left_crossing).a[1] > 0);
+  assertions++;
+}
+// 径向匀速接近的解析解：R = 20 - 2t，阈值 0.5 m 对应 9.75 s。
+const radial = {
+  ...presets.closing,
+  r: [20, 0, 0],
+  u: [10, 0, 0],
+  v: [-2, 0, 0],
+  aT: [0, 0, 0],
+  b: [0, 0, 0],
+};
+for (const law of laws) {
+  const run = simulate(law.id, radial, { dt: 0.2 });
+  assert.equal(run.reason, "进入接近阈值");
+  assert.ok(Math.abs(run.duration - 9.75) < 1e-7);
+  assert.ok(Math.abs(run.minRange - 0.5) < 1e-7);
+  assertions += 3;
+}
+// 三维曲线积分的速度不变量；禁止通过手工归一化速度掩盖积分误差。
+for (const [law, speedKey] of [
+  ["PPN", "u"],
+  ["IPN", "v"],
+]) {
+  const run = simulate(law, presets.closing, { duration: 3 });
+  const speed = norm(presets.closing[speedKey]);
+  assert.ok(
+    run.frames.every((f) => Math.abs(norm(f.state[speedKey]) - speed) < 1e-8),
+  );
+  assertions++;
+}
+// AIPN 完整补偿恒加速度目标后，相对运动应与匀速目标的 IPN 一致。
+const baseline = simulate("IPN", presets.closing, { duration: 3 });
+const acceleration = [0.2, 0.4, -0.3];
+const augmented = simulate(
+  "AIPN",
+  { ...presets.closing, aT: acceleration },
+  { duration: 3 },
+);
+const endBase = baseline.frames.at(-1),
+  endAug = augmented.frames.at(-1);
+for (let i = 0; i < 3; i++) {
+  assert.ok(Math.abs(endBase.state.r[i] - endAug.state.r[i]) < 1e-8);
+  assert.ok(Math.abs(endBase.state.v[i] - endAug.state.v[i]) < 1e-8);
+  assert.ok(
+    Math.abs(endAug.pU[i] - endBase.pU[i] - acceleration[i] * 4.5) < 1e-8,
+  );
+  assertions += 3;
+}
+// 总指令限幅、负闭合、起点在阈值内与非法输入边界。
+const saturated = simulate("APN", presets.maneuver, {
+  duration: 3,
+  maxAcceleration: 0.1,
+});
+assert.ok(saturated.limited && saturated.maxApplied <= 0.1 + 1e-12);
+assertions++;
+assert.equal(simulate("IPN", radial, { radius: 25 }).frames.length, 1);
+assertions++;
+assert.equal(
+  simulate("IPN", presets.opening, { duration: 1 }).reason,
+  "达到设定时长",
+);
+assertions++;
+assert.throws(() => simulate("IPN", radial, { dt: 0 }));
+assertions++;
+// 故意选低增益产生非零最近接近，检查事件前后闭合速度的零点。
+const miss = simulate("RTPN", { ...presets.closing, N: 0 }, { dt: 0.2 });
+assert.equal(miss.reason, "首次最近接近");
+assert.ok(Math.abs(miss.frames.at(-1).closing) < 1e-7);
+assertions += 2;
 const result = {
   passed: true,
   assertions,
   randomStates: 200,
   laws: laws.length,
   scope:
-    "Formula identities, SO(3) covariance, signed and singular boundary cases. Not flight validation.",
+    "公式恒等式、旋转协变、符号边界及闭环积分解析检查；不代表真实飞行验证。",
 };
 console.log(JSON.stringify(result));
