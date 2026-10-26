@@ -6,7 +6,7 @@
 
 网页已独立托管。本仓库用于项目介绍和源码展示，不需要配置 GitHub Pages。
 
-![PN Lab 页面预览](preview.png)
+![3D-PN4AAR 页面预览](preview.png)
 
 ## 可以做什么
 
@@ -25,7 +25,7 @@
 python -m http.server 8000
 ```
 
-浏览器打开 **http://localhost:8000**。结束时按 `Ctrl+C`。Windows 如果找不到 `python`，可用 `py -m http.server 8000`。
+浏览器打开 [localhost:8000](http://localhost:8000)。结束时按 `Ctrl+C`。Windows 如果找不到 `python`，可用 `py -m http.server 8000`。
 
 无需 npm、安装依赖或构建。Three.js 已放在 `vendor/`，浏览网页不依赖 CDN。请通过上述 HTTP 服务打开，直接双击 `index.html` 可能被浏览器的模块安全策略阻止。
 
@@ -68,18 +68,18 @@ PU = I − ûU ûUᵀ              本机地速法平面投影
 et = Pr vr / |Pr vr|         视线法平面内的相对速度方向
 ```
 
-| 选项   | 本项目采用的加速度指令                           |
-| ------ | ------------------------------------------------ | --- | -------------------------------------- |
-| RTPN   | `N Vc (ω × er)`，使用实时闭合速度                |
-| TPN    | `N Vc₀ (ω × er)`，使用固定初始闭合速度           |
-| PPN    | `N (ω × vU)`                                     |
-| IPN    | `N (vr × ω)`                                     |
-| APN    | `RTPN + (N/2) Pr aT`，经典横向近似的三维投影实现 |
-| AIPN   | `IPN + aT`，选用完整目标加速度补偿版本           |
-| BPN    | `RTPN + Pr b`，选用显式投影偏置示例              |
-| BPPN   | `PPN + PU b`，选用速度法向偏置示例               |
-| GTPN   | `N Vc                                            | ω   | (cosβ et + sinβ er)`，选用局部平面推广 |
-| ZEM-PN | `(N/tgo²) Pr (r + vr tgo)`，`tgo = R/Vc > 0`     |
+| 选项 | 本项目采用的加速度指令 |
+| --- | --- |
+| RTPN | `N Vc (ω × er)`，使用实时闭合速度 |
+| TPN | `N Vc₀ (ω × er)`，使用固定初始闭合速度 |
+| PPN | `N (ω × vU)` |
+| IPN | `N (vr × ω)` |
+| APN | `RTPN + (N/2) Pr aT`，经典横向近似的三维投影实现 |
+| AIPN | `IPN + aT`，选用完整目标加速度补偿版本 |
+| BPN | `RTPN + Pr b`，选用显式投影偏置示例 |
+| BPPN | `PPN + PU b`，选用速度法向偏置示例 |
+| GTPN | `N Vc norm(ω) (cosβ et + sinβ er)`，选用局部平面推广；`norm` 表示模长 |
+| ZEM-PN | `(N/tgo²) Pr (r + vr tgo)`，`tgo = R/Vc > 0` |
 
 PN 的命名并不完全统一；部分文献把这里的 RTPN 也称为 TPN。APN、BPN 等有多个版本，以上列出本项目实际实现的形式，不声称穷尽所有 PN。GTPN 在 `ω = 0` 时定义为零指令。ZEM-PN 在本页约定下与 RTPN 等价。
 
