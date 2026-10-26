@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      name="description"
+      content="用可旋转三维无人机与锥套场景，理解 PPN、TPN、RTPN、IPN、APN、AIPN、BPN 等比例导引的方向、输入和定义。"
+    />
+    <meta name="theme-color" content="#111c2c" />
+    <title>PN Lab · 三维比例导引实验室</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='9' fill='%23255cf3'/%3E%3Cpath d='M9 29 20 8 31 29 20 24Z' fill='white'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./style.css" />
+    <script type="importmap">
+      { "imports": { "three": "./vendor/three.module.js" } }
+    </script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#"
+        ><span class="brand-mark">↗</span
+        ><span>PN <b>LAB</b><small>GUIDANCE GEOMETRY</small></span></a
+      >
+      <div class="top-links">
+        <a href="#references">文献依据 ↗</a
+        ><span class="status-dot">三维交互</span>
+      </div>
+    </header>
+    <main>
+      <section class="intro">
+        <div>
+          <div class="eyebrow">无人机 × 空中锥套 / 比例导引探索</div>
+          <h1>同一相对状态，<span>不同加速方向。</span></h1>
+          <p>旋转视角，看清各类 PN 如何改变无人机的运动指令。</p>
+        </div>
+        <div class="intro-note">
+          <span>10</span>
+          <div>明确约定的导引选项<br /><small>NED · 米 · 秒 · 弧度</small></div>
+        </div>
+      </section>
+      <section class="lab" aria-label="三维比例导引交互实验">
+        <aside class="controls-panel">
+          <div class="section-label">01 / 选择导引律</div>
+          <div id="law-list" class="law-list"></div>
+          <div class="section-label state-label">02 / 设定同一运动状态</div>
+          <label class="field-label" for="scenario">场景预设</label
+          ><select id="scenario"></select>
+          <div class="gain-control">
+            <label for="gain">导航系数 N</label
+            ><output id="gain-value">3.0</output>
+          </div>
+          <input id="gain" type="range" min="1" max="8" step=".1" value="3" />
+          <div id="special-controls"></div>
+          <details class="state-editor">
+            <summary>编辑三轴输入 <span>N / E / D</span></summary>
+            <div id="vector-inputs"></div>
+            <button id="reset-state" class="text-button">恢复当前预设</button>
+          </details>
+        </aside>
+        <div class="scene-column">
+          <div class="scene-shell" id="scene-shell">
+            <div class="scene-heading">
+              <div>
+                <span class="live-dot"></span> <span id="scene-law">RTPN</span
+                ><small>瞬时几何 · 非飞行仿真</small>
+              </div>
+              <span class="coordinate-tag">NED</span>
+            </div>
+            <div
+              id="viewport"
+              role="img"
+              aria-label="可拖动旋转的三维场景，包含无人机、锥套、北东地坐标轴和所选导引律的加速度向量"
+            ></div>
+            <div class="scene-toolbar" aria-label="视角">
+              <button
+                data-view="perspective"
+                class="active"
+                aria-pressed="true"
+              >
+                透视</button
+              ><button data-view="top" aria-pressed="false">俯视</button
+              ><button data-view="side" aria-pressed="false">侧视</button
+              ><button id="fit-view" aria-label="重新居中并适配场景">
+                ↗ 居中</button
+              ><button id="expand-view" aria-label="全屏查看三维场景">⛶</button>
+            </div>
+            <div id="scene-warning" class="scene-warning" hidden></div>
+            <div class="scene-bottom">
+              <span>拖动旋转 · 滚轮缩放 · 右键平移</span
+              ><span>机模与锥套为几何示意</span>
+            </div>
+          </div>
+          <div class="legend-controls">
+            <div class="legend">
+              <span><i style="--key: #75879b"></i>视线 r</span
+              ><span><i style="--key: #47c2b1"></i>参考方向</span
+              ><span><i style="--key: #4580ff"></i>总加速度 a</span
+              ><span><i style="--key: #edaa50"></i>增强 / 偏置项</span>
+            </div>
+            <div class="toggles">
+              <label
+                ><input
+                  type="checkbox"
+                  id="show-velocities"
+                  checked
+                />速度向量</label
+              ><label><input type="checkbox" id="show-plane" />参考法平面</label
+              ><label
+                ><input type="checkbox" id="show-compare" />基础律叠加</label
+              >
+            </div>
+            <label class="length-label"
+              >箭头长度<select id="length-mode">
+                <option value="direction">仅显示方向</option>
+                <option value="magnitude">同类按幅值缩放</option>
+              </select></label
+            >
+          </div>
+          <div class="metrics">
+            <div>
+              <span>相对距离 R</span><strong id="metric-range">—</strong
+              ><small>m</small>
+            </div>
+            <div>
+              <span>闭合速度 Vc</span><strong id="metric-closing">—</strong
+              ><small>m/s</small>
+            </div>
+            <div>
+              <span>视线角速率 |ω|</span><strong id="metric-omega">—</strong
+              ><small>rad/s</small>
+            </div>
+          </div>
+          <p class="scale-note" id="scale-note">
+            位置按米绘制；向量箭头仅表示方向，真实大小见数值。不同量纲不共用长度比例。
+          </p>
+        </div>
+        <aside class="inspector">
+          <div class="section-label">03 / 理解这条指令</div>
+          <div class="law-title">
+            <h2 id="law-title">RTPN</h2>
+            <span id="law-tag" class="tag"></span>
+          </div>
+          <p id="law-name" class="law-name"></p>
+          <div id="formula" class="formula"></div>
+          <p id="law-description" class="description"></p>
+          <div class="output-block">
+            <div class="output-heading">
+              无人机加速度指令 <small>m/s²</small>
+            </div>
+            <div class="output-values">
+              <div><span>北 N</span><strong id="out-n">—</strong></div>
+              <div><span>东 E</span><strong id="out-e">—</strong></div>
+              <div><span>地 D</span><strong id="out-d">—</strong></div>
+            </div>
+            <div class="magnitude-line">
+              <span>模长 |a|</span><b id="out-mag">—</b>
+            </div>
+          </div>
+          <div class="decomposition">
+            <div><span>基座项</span><code id="base-value">—</code></div>
+            <div><span>增强 / 偏置项</span><code id="extra-value">—</code></div>
+          </div>
+          <dl class="facts">
+            <dt>必需输入</dt>
+            <dd id="law-inputs"></dd>
+            <dt>方向参考</dt>
+            <dd id="law-reference"></dd>
+          </dl>
+          <div class="check-line" id="check-line"></div>
+          <div class="definition-note">
+            <b>定义边界</b>
+            <p id="law-notes"></p>
+          </div>
+          <div id="law-sources" class="law-sources"></div>
+        </aside>
+      </section>
+      <section class="comparison-section">
+        <div class="section-top">
+          <div>
+            <div class="eyebrow">ONE STATE · TEN EXPRESSIONS</div>
+            <h2>放在一起，才看得清差别。</h2>
+          </div>
+          <p>
+            同一状态、同一数值 N 的瞬时比较。<br />不表示增益已公平整定，也不构成性能排名。
+          </p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>导引选项</th>
+                <th>采用的形式</th>
+                <th>加速度 [N, E, D] / m/s²</th>
+                <th>沿视线 / m/s²</th>
+                <th>|a| / m/s²</th>
+              </tr>
+            </thead>
+            <tbody id="comparison-body"></tbody>
+          </table>
+        </div>
+      </section>
+      <section id="references" class="references">
+        <div class="eyebrow">TRACEABLE SOURCES</div>
+        <h2>定义可以追溯。</h2>
+        <div id="reference-list"></div>
+      </section>
+    </main>
+    <footer>
+      <span>PN LAB / 三维比例导引实验室</span
+      ><span>面向几何理解，保持定义透明。</span>
+    </footer>
+    <script type="module" src="./app.mjs"></script>
+  </body>
+</html>
