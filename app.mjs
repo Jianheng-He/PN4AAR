@@ -5,7 +5,6 @@ import {
   evaluate,
   geometry,
   norm,
-  dot,
 } from "./guidance.mjs";
 import { simulate } from "./simulation.mjs";
 import { createScene } from "./scene.mjs";
@@ -242,7 +241,6 @@ function update(refit = false, keepTrajectory = false) {
   if (frame)
     $("applied-command").textContent =
       `当前执行 a = ${vec(frame.applied)} m/s²${frame.limited ? "（已限幅；右侧和下表仍为原始公式值）" : "（未限幅）"}`;
-  explainDirection(displayState, out);
   window.__PN4AAR__ = {
     state: clone(displayState),
     initialState: clone(state),
@@ -308,22 +306,6 @@ $("expand-view").addEventListener("click", async () => {
   }
 });
 
-function explainDirection(s, out) {
-  const horizontal = Math.hypot(s.u[0], s.u[1]);
-  if (!out.valid || horizontal < 1e-8) {
-    $("direction-explanation").textContent =
-      "当前状态无法定义水平航向左右；请查看 NED 分量。";
-    return;
-  }
-  const right = [-s.u[1] / horizontal, s.u[0] / horizontal, 0];
-  const rSide = dot(s.r, right),
-    vSide = dot(s.v, right),
-    aSide = dot(out.a, right);
-  const side = (x) =>
-    Math.abs(x) < 1e-5 ? "横向为零" : x > 0 ? "向右" : "向左";
-  $("direction-explanation").textContent =
-    `锥套${side(rSide)} ${fmt(Math.abs(rSide), 2)} m；相对横向运动${side(vSide)} ${fmt(Math.abs(vSide), 2)} m/s；指令${side(aSide)} ${fmt(Math.abs(aSide), 3)} m/s²。PN 根据视线转动修正交会趋势，不能只看目标当前在哪边。`;
-}
 function pause() {
   playbackGeneration++;
   playing = false;

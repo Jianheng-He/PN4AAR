@@ -1026,7 +1026,7 @@ footer {
   }
 }
 
-/* 轨迹控制与方向解释；窄屏下保持单列可操作。 */
+/* 轨迹控制；窄屏下保持单列可操作。 */
 .trajectory-panel {
   margin-top: 20px;
   padding: 18px;
@@ -1142,22 +1142,6 @@ footer {
   padding: 6px;
   color: #3e5e8b;
   background: #fafbfd;
-}
-.direction-note {
-  margin-top: 16px;
-  padding: 12px;
-  background: #edf3fd;
-  border-radius: 8px;
-  font-size: 11px;
-  line-height: 1.9;
-  color: #49648a;
-}
-.direction-note p {
-  margin: 6px 0;
-}
-.direction-note small {
-  color: #8292a9;
-  font-size: 10px;
 }
 @media (max-width: 480px) {
   .trajectory-panel {
